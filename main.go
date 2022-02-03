@@ -3,22 +3,30 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 
 	tea "github.com/charmbracelet/bubbletea"
+	yt "github.com/noisersup/ledyt/yt-client"
 )
 
 func main() {
-	prog := tea.NewProgram(initialModel())
+	client := yt.Client{http.Client{}}
+	v, err := client.Search("minecraft")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	prog := tea.NewProgram(initialModel(v))
 	if err := prog.Start(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func mockVideos(n int) []Video {
-	ch := Channel{"Ledu", "/521matiasda"}
-	var out []Video
+func mockVideos(n int) []yt.Video {
+	ch := yt.Channel{"Ledu", "/521matiasda"}
+	var out []yt.Video
 	for i := 0; i < n; i++ {
-		v := Video{
+		v := yt.Video{
 			Title:   fmt.Sprintf("Video %d", i),
 			Channel: &ch,
 			URL:     fmt.Sprintf("/sfdsdsdf%d", i),
@@ -29,13 +37,13 @@ func mockVideos(n int) []Video {
 }
 
 type model struct {
-	videos []Video
+	videos []yt.Video
 	cursor int
 }
 
-func initialModel() model {
+func initialModel(v []yt.Video) model {
 	return model{
-		videos: mockVideos(20),
+		videos: v,
 		cursor: 0,
 	}
 }
@@ -77,16 +85,4 @@ func (m model) View() string {
 		s += fmt.Sprintf("%s %s [author: %s]\n", cursor, video.Title, video.Channel.Name)
 	}
 	return s
-}
-
-type Video struct {
-	Title   string
-	Channel *Channel
-	URL     string
-	//TODO: length
-}
-
-type Channel struct {
-	Name string
-	URL  string
 }
