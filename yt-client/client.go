@@ -81,6 +81,7 @@ func getVideosFromResponse(respVideos []ResponseVideo) []Video {
 		}
 		v := Video{
 			Title:   videoRuns[0].Text,
+			URL:     fmt.Sprintf("https://youtube.com/watch?v=%s", rv.VideoRenderer.VideoId),
 			Channel: &ch,
 		}
 		outVideos = append(outVideos, v)

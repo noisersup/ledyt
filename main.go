@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os/exec"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -38,8 +39,8 @@ func mockVideos(n int) []yt.Video {
 type model struct {
 	videos      []yt.Video
 	cursor      int
-	searchInput textinput.Model
 	client      *yt.Client
+	searchInput textinput.Model
 }
 
 func initialModel(v []yt.Video) model {
@@ -97,12 +98,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				m.videos = v
+			} else {
+				m.playCurrentVideo()
 			}
 		}
 	}
 
 	m.searchInput, cmd = m.searchInput.Update(msg)
 	return m, cmd
+}
+
+func (m model) playCurrentVideo() {
+	exec.Command("mpv", m.videos[m.cursor].URL).Output()
 }
 
 func (m model) View() string {

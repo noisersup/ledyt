@@ -30,7 +30,8 @@ type SearchResponse struct {
 
 type ResponseVideo struct {
 	VideoRenderer struct {
-		Title struct {
+		VideoId string `json:"videoId"`
+		Title   struct {
 			Runs []struct {
 				Text string `json:"text"`
 			} `json:"runs"`
