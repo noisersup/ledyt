@@ -1,15 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os/exec"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	yt "github.com/noisersup/ledyt/yt-client"
+	"github.com/noisersup/ledyt/yt-client/output"
 )
 
 func main() {
@@ -41,6 +45,12 @@ type model struct {
 	cursor      int
 	client      *yt.Client
 	searchInput textinput.Model
+	spinner     spinner.Model
+	logger      output.Model
+	log         chan []byte
+	loading     bool
+	load        chan bool
+	showVideo   chan []yt.Video
 }
 
 func initialModel(v []yt.Video) model {
@@ -49,20 +59,42 @@ func initialModel(v []yt.Video) model {
 	searchInput.CharLimit = 50 //TODO: search for max
 	searchInput.Width = 20
 
+	s := spinner.New()
+	s.Spinner = spinner.Points
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
+	out := output.New(5)
+
 	return model{
 		videos:      v,
 		cursor:      0,
 		searchInput: searchInput,
 		client:      &yt.Client{http.Client{}},
+		spinner:     s,
+		logger:      out,
+		log:         make(chan []byte),
+		loading:     false,
+		load:        make(chan bool),
+		showVideo:   make(chan []yt.Video),
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, tea.EnterAltScreen)
+	return tea.Batch(m.spinner.Tick, textinput.Blink, tea.EnterAltScreen)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+
+	select {
+	case l := <-m.load:
+		m.loading = l
+	case v := <-m.showVideo:
+		m.videos = v
+	case msg := <-m.log:
+		m.logger.PushBytes(msg)
+	default:
+	}
 
 	switch msg := msg.(type) {
 	//key press
@@ -88,35 +120,68 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.searchInput.Blur()
 
 		case tea.KeyEnter.String():
+			if m.loading {
+				break
+			}
 			if m.searchInput.Focused() {
 				query := m.searchInput.Value()
 				m.searchInput.Blur()
 
-				v, err := m.client.Search(query)
-				if err != nil {
-					return m, cmd
-				}
-
-				m.videos = v
+				m.loading = true
+				go func() {
+					v, err := m.client.Search(query)
+					m.load <- false
+					if err != nil {
+						return
+					}
+					m.showVideo <- v
+				}()
 			} else {
-				m.playCurrentVideo()
+				go func() {
+					m.load <- true
+					var buf bytes.Buffer
+					mw := io.MultiWriter(&buf)
+					go func() {
+						for {
+							if buf.Bytes() != nil {
+								m.load <- false
+								return
+							}
+						}
+					}()
+
+					cmd := exec.Command("mpv", m.videos[m.cursor].URL)
+					cmd.Stdout = mw
+					if err := cmd.Run(); err != nil {
+						m.log <- []byte(err.Error())
+					}
+				}()
 			}
 		}
 	}
 
-	m.searchInput, cmd = m.searchInput.Update(msg)
-	return m, cmd
-}
+	var searchCmd tea.Cmd
+	var spinnerCmd tea.Cmd
+	var logCmd tea.Cmd
 
-func (m model) playCurrentVideo() {
-	exec.Command("mpv", m.videos[m.cursor].URL).Output()
+	m.logger, logCmd = m.logger.Update(msg)
+	m.searchInput, searchCmd = m.searchInput.Update(msg)
+	m.spinner, spinnerCmd = m.spinner.Update(msg)
+	return m, tea.Batch(cmd, spinnerCmd, searchCmd, logCmd)
 }
 
 func (m model) View() string {
-	s := "[LEDYT]\n\n"
+	s := lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(printLogo())
+	s += "\n\n"
 	s += m.searchBar()
 	s += "\n"
+	if m.loading {
+		s += m.spinner.View()
+	}
+	s += "\n"
 	s += m.searchList()
+	s += "\n\n"
+	s += m.logger.View()
 	return s
 }
 
@@ -132,7 +197,8 @@ func (m model) searchBar() string {
 }
 
 func (m model) searchList() string {
-	var s string
+	s := "results\n\n"
+
 	var style = lipgloss.NewStyle().
 		Bold(true).
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -150,4 +216,14 @@ func (m model) searchList() string {
 		}
 	}
 	return style.Render(s)
+}
+
+func printLogo() string {
+	return `
+    __     ______  ____  __  __  ______
+   / /    / ____/ / __ \ \ \/ / /_  __/
+  / /    / __/   / / / /  \  /   / /   
+ / /___ / /___  / /_/ /   / /   / /    
+/_____//_____/ /_____/   /_/   /_/     
+                                     `
 }
