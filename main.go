@@ -138,22 +138,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}()
 			} else {
 				go func() {
-					m.load <- true
-					var buf bytes.Buffer
-					mw := io.MultiWriter(&buf)
-					go func() {
-						for {
-							if buf.Bytes() != nil {
-								m.load <- false
-								return
+					if(len(m.videos) > m.cursor) {
+						m.load <- true
+						var buf bytes.Buffer
+						mw := io.MultiWriter(&buf)
+						go func() {
+							for {
+								if buf.Bytes() != nil {
+									m.load <- false
+									return
+								}
 							}
+						}()
+						cmd := exec.Command("mpv", m.videos[m.cursor].URL)
+						cmd.Stdout = mw
+						if err := cmd.Run(); err != nil {
+							m.log <- []byte(err.Error())
 						}
-					}()
-
-					cmd := exec.Command("mpv", m.videos[m.cursor].URL)
-					cmd.Stdout = mw
-					if err := cmd.Run(); err != nil {
-						m.log <- []byte(err.Error())
 					}
 				}()
 			}
