@@ -1,10 +1,9 @@
-package main
+package tui
 
 import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os/exec"
 
@@ -12,48 +11,25 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	yt "github.com/noisersup/ledyt/yt-client"
-	"github.com/noisersup/ledyt/yt-client/output"
+	"github.com/noisersup/ledyt/backend"
+	"github.com/noisersup/ledyt/backend/common"
+	"github.com/noisersup/ledyt/backend/yt"
 )
 
-func main() {
-	//v := mockVideos(20)
-	v := []yt.Video{}
-
-	prog := tea.NewProgram(initialModel(v))
-	if err := prog.Start(); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func mockVideos(n int) []yt.Video {
-	ch := yt.Channel{"Ledu", "/521matiasda"}
-	var out []yt.Video
-	for i := 0; i < n; i++ {
-		v := yt.Video{
-			Title:   fmt.Sprintf("Video %d", i),
-			Channel: &ch,
-			URL:     fmt.Sprintf("/sfdsdsdf%d", i),
-		}
-		out = append(out, v)
-	}
-	return out
-}
-
 type model struct {
-	videos      []yt.Video
+	videos      []common.Video
 	cursor      int
-	client      *yt.Client
+	client      backend.Backend
 	searchInput textinput.Model
 	spinner     spinner.Model
-	logger      output.Model
+	logger      Model
 	log         chan []byte
 	loading     bool
 	load        chan bool
-	showVideo   chan []yt.Video
+	showVideo   chan []common.Video
 }
 
-func initialModel(v []yt.Video) model {
+func InitialModel(v []common.Video) model {
 	searchInput := textinput.New()
 	searchInput.Placeholder = "Search..."
 	searchInput.CharLimit = 50 //TODO: search for max
@@ -63,19 +39,19 @@ func initialModel(v []yt.Video) model {
 	s.Spinner = spinner.Points
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
-	out := output.New(5)
+	out := New(5)
 
 	return model{
 		videos:      v,
 		cursor:      0,
 		searchInput: searchInput,
-		client:      &yt.Client{http.Client{}},
+		client:      yt.YoutubeClient{http.Client{}},
 		spinner:     s,
 		logger:      out,
 		log:         make(chan []byte),
 		loading:     false,
 		load:        make(chan bool),
-		showVideo:   make(chan []yt.Video),
+		showVideo:   make(chan []common.Video),
 	}
 }
 
@@ -138,7 +114,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}()
 			} else {
 				go func() {
-					if(len(m.videos) > m.cursor) {
+					if len(m.videos) > m.cursor {
 						m.load <- true
 						var buf bytes.Buffer
 						mw := io.MultiWriter(&buf)
