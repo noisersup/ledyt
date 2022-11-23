@@ -15,6 +15,7 @@ type YoutubeClient struct {
 	C http.Client
 }
 
+// Search returns the slice of videos based on provided search query.
 func (c YoutubeClient) Search(query string) ([]common.Video, error) {
 	uri, err := url.Parse("https://www.youtube.com/youtubei/v1/search")
 	if err != nil {
