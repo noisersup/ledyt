@@ -1,4 +1,4 @@
-package ytclient
+package yt
 
 import (
 	"bytes"
@@ -7,13 +7,16 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+
+	"github.com/noisersup/ledyt/backend/common"
 )
 
-type Client struct {
+type YoutubeClient struct {
 	C http.Client
 }
 
-func (c *Client) Search(query string) ([]Video, error) {
+// Search returns the slice of videos based on provided search query.
+func (c YoutubeClient) Search(query string) ([]common.Video, error) {
 	uri, err := url.Parse("https://www.youtube.com/youtubei/v1/search")
 	if err != nil {
 		return nil, err
@@ -66,8 +69,8 @@ func searchBody(query string) ([]byte, error) {
 	return json.Marshal(search)
 }
 
-func getVideosFromResponse(respVideos []ResponseVideo) []Video {
-	outVideos := []Video{}
+func getVideosFromResponse(respVideos []ResponseVideo) []common.Video {
+	outVideos := []common.Video{}
 	for _, rv := range respVideos {
 		channelRuns := rv.VideoRenderer.OwnerText.Runs
 		videoRuns := rv.VideoRenderer.Title.Runs
@@ -76,10 +79,10 @@ func getVideosFromResponse(respVideos []ResponseVideo) []Video {
 			continue //Ignore horizontal card lists, shelf renderers, etc...
 		}
 
-		ch := Channel{
+		ch := common.Channel{
 			Name: channelRuns[0].Text,
 		}
-		v := Video{
+		v := common.Video{
 			Title:   videoRuns[0].Text,
 			URL:     fmt.Sprintf("https://youtube.com/watch?v=%s", rv.VideoRenderer.VideoId),
 			Channel: &ch,
@@ -87,4 +90,54 @@ func getVideosFromResponse(respVideos []ResponseVideo) []Video {
 		outVideos = append(outVideos, v)
 	}
 	return outVideos
+}
+
+type SearchResponse struct {
+	Contents struct {
+		TwoColumn struct {
+			PrimaryContents struct {
+				SectionList struct {
+					Contents []struct {
+						ItemSection struct {
+							Contents []ResponseVideo `json:"contents"`
+						} `json:"itemSectionRenderer"`
+					} `json:"contents"`
+				} `json:"sectionListRenderer"`
+			} `json:"primaryContents"`
+		} `json:"twoColumnSearchResultsRenderer"`
+	} `json:"contents"`
+}
+
+type ResponseVideo struct {
+	VideoRenderer struct {
+		VideoId string `json:"videoId"`
+		Title   struct {
+			Runs []struct {
+				Text string `json:"text"`
+			} `json:"runs"`
+		} `json:"title"`
+		OwnerText struct {
+			Runs []struct {
+				Text string `json:"text"`
+			} `json:"runs"`
+		} `json:"ownerText"`
+	} `json:"videoRenderer"`
+}
+
+type SearchBody struct {
+	Context Context `json:"context"`
+	Query   string  `json:"query"`
+}
+
+type Context struct {
+	Client SearchClient `json:"client"`
+}
+
+type SearchClient struct {
+	Hl            string `json:"hl"`
+	Gl            string `json:"gl"`
+	ClientName    string `json:"clientName"`
+	ClientVersion string `json:"clientVersion"`
+	TimeZone      string `json:"timeZone"`
+	UtcOffset     int    `json:"utcOffsetMinutes"`
 }
